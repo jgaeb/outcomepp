@@ -1,4 +1,7 @@
-# Reproduction Materials for "A Simple, Statistically Robust Test of Discrimination."
+# A Simple, Statistically Robust Test of Discrimination.
+
+Data and replication materials for Gaebler and Goel (2024)
+["A Simple, Statistically Robust Test of Discrimination"](https://arxiv.org/abs/2407.06539).
 
 To reproduce the analyses in our paper:
 

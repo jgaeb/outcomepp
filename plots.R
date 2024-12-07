@@ -136,7 +136,7 @@ p_main_infra <- ggplot() +
   )
 
 ggsave(
-  filename = path("plots", "main-inframarginality.pdf"),
+  filename = path("plots", "inframarginality-main.pdf"),
   plot     = p_main_infra,
   width    = 2.5,
   height   = 2.5,
@@ -231,7 +231,7 @@ p_app_infra <- ggplot() +
   )
 
 ggsave(
-  filename = path("plots", "appendix-inframarginality.pdf"),
+  filename = path("plots", "inframarginality-appendix.pdf"),
   plot     = p_app_infra,
   width    = 2.5,
   height   = 2.5,
@@ -308,7 +308,7 @@ p_ripa <- ripa %>%
     alpha = 0.1
   ) +
   # Annotate with the x-axis
-  geom_hline(yintercept = 0, linetype = "dashed") + 
+  geom_hline(yintercept = 0, linetype = "dashed") +
   # Annotate with the y-axis
   geom_vline(xintercept = 0, linetype = "dashed") +
   # Fix the aspect ratio
@@ -326,7 +326,7 @@ p_ripa <- ripa %>%
     color = "Race",
     x     = expr(paste(
       phantom() %<-% phantom(),
-      " Lower minority outcome rate     Lower White outcome rate",
+      " Lower minority outcome rate      Lower White outcome rate",
       phantom() %->% phantom(),
       "    ",
     )),
@@ -343,7 +343,7 @@ p_ripa <- ripa %>%
         phantom(),
         atop(textstyle(" Higher White"), textstyle("decision rate"))
       ),
-      "     ",
+      "      ",
       atop(
         phantom(),
         atop(textstyle("Higher minority"), textstyle("decision rate    "))
@@ -358,17 +358,13 @@ p_ripa <- ripa %>%
     ))
   ) +
   facet_wrap(vars(race)) +
-  theme(
-    axis.title.y = element_text(size = 10),
-    axis.title.x = element_text(size = 10),
-    aspect.ratio = 2/3
-  )
+  theme(aspect.ratio = 2/3)
 
 ggsave(
   path("plots", "ripa.pdf"),
   p_ripa,
   width  = 6,
-  height = 3,
+  height = 2.5,
   device = cairo_pdf
 )
 
@@ -443,7 +439,7 @@ p_monotonicity <- monotonicity %>%
     # Get rid of key background
     legend.key = element_blank(),
     # Make facet labels smaller
-    strip.text = element_text(size = 6),
+    strip.text = element_text(size = 5),
     # Space the facets out
     panel.spacing = unit(1, "lines")
   )
@@ -452,11 +448,11 @@ ggsave(
   path("plots", "monotonicity.pdf"),
   p_monotonicity,
   width  = 6,
-  height = 2,
+  height = 1.75,
 )
 
 ################################################################################
-################################# SIMULATION ###################################
+############################ REAL-DATA SIMULATION ##############################
 ################################################################################
 
 # Convenience function for loading the simulation data
@@ -552,7 +548,7 @@ load_simulation <- function(name) {
       dataset
     )
 }
-simulation <- c("lending", "compas", "sqf", "lsat") %>%
+real_simulation <- c("lending", "compas", "sqf", "lsat") %>%
   map(load_simulation) %>%
   list_rbind() %>%
   mutate(
@@ -569,254 +565,238 @@ simulation <- c("lending", "compas", "sqf", "lsat") %>%
   )
 
 # Plot the simulation data
-for (policy in levels(simulation$policy)) {
-  # Prepare the hybrid simulation data
-  hybrid_sim_data <- simulation %>%
-    filter(policy == {{ policy }}) %>%
-    mutate(
-      hybrid_result = fct_recode(
-        hybrid_result,
-        `Discrimination against\nminority group`    = "Discriminatory",
-        `Discrimination against\nWhite individuals` = "Favorable"
-      ),
-      alpha         = pmin(abs(Delta_decision_rate), abs(Delta_outcome_rate)),
-      alpha         = if_else(hybrid_result == "Infeasible", 1, alpha),
-      race          = fct_recode(race, "Black" = "b", "Hispanic" = "h"),
-      shape         = case_when(
-        t_0 > t_1 & str_detect(dataset, "Recid|Contra") ~
-          "Discrimination against\nminority group",
-        t_0 > t_1 & str_detect(dataset, "Lend|Bar") ~
+for (policy_ in levels(real_simulation$policy)) {
+  for (race_ in c("Black", "Hispanic")) {
+    # Prepare the hybrid simulation data
+    sim_data <- real_simulation %>%
+      mutate(race = fct_recode(race, "Black" = "b", "Hispanic" = "h")) %>%
+      filter(policy == policy_, race == race_) %>%
+      mutate(
+        hybrid_result = fct_recode(
+          hybrid_result,
+          "Discrimination against\n{ race_ } individuals" := "Discriminatory",
+          "Discrimination against\nWhite individuals"     := "Favorable"
+        ),
+        outcome_result = fct_recode(
+          outcome_result,
+          "Discrimination against\n{ race_ } individuals" := "Discriminatory",
+          "Discrimination against\nWhite individuals"     := "Favorable"
+        ),
+        shape         = case_when(
+          t_0 > t_1 & str_detect(dataset, "Recid|Contra") ~
+            glue("Discrimination against\n{ race_ } individuals"),
+          t_0 > t_1 & str_detect(dataset, "Lend|Bar") ~
+            "Discrimination against\nWhite individuals",
+          t_0 < t_1 & str_detect(dataset, "Recid|Contra") ~
+            "Discrimination against\nWhite individuals",
+          t_0 < t_1 & str_detect(dataset, "Lend|Bar") ~
+            glue("Discrimination against\n{ race_ } individuals"),
+          TRUE ~ " "
+        )
+      ) %>%
+      pivot_longer(
+        cols = ends_with("result"),
+        names_to = "test",
+        values_to = "result"
+      ) %>%
+      mutate(test = factor(
+        test,
+        levels = c("hybrid_result", "outcome_result"),
+        labels = c("Robust", "Standard")
+      ))
+
+    # Plot the simulation data
+    p_simulation <- sim_data %>%
+      ggplot() +
+      geom_raster(
+        aes(
+          x = t_0,
+          y = t_1,
+          fill = result
+        ),
+        alpha = 0.5
+      ) +
+      geom_point(
+        aes(x = t_0, y = t_1, shape = shape, color = result),
+        size = 2,
+        alpha = 1,
+        # Only print at 10% intervals
+        data = filter(
+          sim_data,
+          abs(((10 * t_0) %% 1) - 0.5) < 1e-6,
+          abs(((10 * t_1) %% 1) - 0.5) < 1e-6
+        )
+      ) +
+      geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+      scale_x_continuous(
+        labels = scales::percent,
+        limits = c(0, 1),
+        expand = c(0, 0),
+        oob = oob_keep
+      ) +
+      scale_y_continuous(
+        labels = scales::percent,
+        limits = c(0, 1),
+        expand = c(0, 0),
+        oob = oob_keep
+      ) +
+      scale_fill_manual(
+        values = set_names(
+          c("red", "blue", "yellow", "grey"),
+          c(
+            glue("Discrimination against\n{ race_ } individuals"),
+            "Discrimination against\nWhite individuals",
+            "Inconclusive",
+            "Infeasible"
+          )
+        ),
+        breaks = c(
+          glue("Discrimination against\n{ race_ } individuals"),
           "Discrimination against\nWhite individuals",
-        t_0 < t_1 & str_detect(dataset, "Recid|Contra") ~
-          "Discrimination against\nWhite individuals",
-        t_0 < t_1 & str_detect(dataset, "Lend|Bar") ~
-          "Discrimination against\nminority group",
-        TRUE ~ " "
+          "Inconclusive"
+        )
+      ) +
+      scale_color_manual(
+        values = set_names(
+          c("red", "blue", "#8B8000", "grey"),
+          c(
+            glue("Discrimination against\n{ race_ } individuals"),
+            "Discrimination against\nWhite individuals",
+            "Inconclusive",
+            "Infeasible"
+          )
+        )
+      ) +
+      scale_shape_manual(
+        values = set_names(
+          c("\u00D7", "\u00B7", " "),
+          c(
+            glue("Discrimination against\n{ race_ } individuals"),
+            "Discrimination against\nWhite individuals",
+            " "
+          )
+        ),
+        breaks = c(
+          glue("Discrimination against\n{ race_ } individuals"),
+          "Discrimination against\nWhite individuals"
+        )
+      ) +
+      coord_fixed() +
+      labs(
+        x     = "White decision threshold (percentile)",
+        y     = glue("{ race_ } decision threshold (percentile)"),
+        fill  = "Test result:",
+        shape = "Ground truth:"
+      ) +
+      guides(
+        alpha = guide_none(),
+        color = guide_none(),
+        fill = guide_legend(
+          order = 1,
+          nrow = 3,
+          byrow = TRUE,
+          override.aes = list(alpha = 1)
+        ),
+        shape = guide_legend(
+          order = 2,
+          nrow = 3,
+          byrow = TRUE,
+          override.aes = list(alpha = 1, color = "black", size = 6)
+        )
+      ) +
+      facet_grid(rows = vars(test), cols = vars(dataset)) +
+      theme(
+        legend.position = "right",
+        legend.text = element_text(size = 7),
+        legend.spacing.y = unit(0, "lines"),
+        axis.text = element_text(size = 6),
+        strip.text = element_text(size = 5),
+        panel.spacing = unit(1, "lines"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank()
       )
+
+    ggsave(
+      path("plots", glue("simulation-{ policy_ }-{ str_to_lower(race_) }.pdf")),
+      p_simulation,
+      width  = 6.5,
+      height = 2.8,
+      dpi    = 300
     )
-
-  # Plot the simulation data
-  p_hybrid_simulation <- hybrid_sim_data %>%
-    ggplot() +
-    geom_rect(
-      aes(
-        xmin = t_0,
-        xmax = t_0 + 1 / n_tiles,
-        ymin = t_1,
-        ymax = t_1 + 1 / n_tiles,
-        fill = hybrid_result
-      ),
-      color = "transparent",
-      alpha = 0.5
-    ) +
-    geom_point(
-      aes(x = t_0, y = t_1, shape = shape, color = hybrid_result),
-      size = 2,
-      alpha = 1,
-      # Only print at 10% intervals
-      data = filter(
-        hybrid_sim_data,
-        abs(((10 * t_0) %% 1) - 0.5) < 1e-6,
-        abs(((10 * t_1) %% 1) - 0.5) < 1e-6
-      )
-    ) + 
-    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
-    scale_x_continuous(
-      labels = scales::percent,
-      limits = c(0, 1),
-      expand = c(0, 0)
-    ) +
-    scale_y_continuous(
-      labels = scales::percent,
-      limits = c(0, 1),
-      expand = c(0, 0)
-    ) +
-    scale_fill_manual(
-      values = c(
-        "Discrimination against\nminority group" = "red",
-        "Discrimination against\nWhite individuals" = "blue",
-        "Inconclusive" = "yellow",
-        "Infeasible" = "grey"
-      )
-    ) +
-    scale_color_manual(
-      guide = "none",
-      values = c(
-        "Discrimination against\nminority group" = "red",
-        "Discrimination against\nWhite individuals" = "blue",
-        "Inconclusive" = "#8B8000",
-        "Infeasible" = "grey"
-      )
-    ) +
-    scale_shape_manual(
-      values = c(
-        "Discrimination against\nminority group" = "\u00D7",
-        "Discrimination against\nWhite individuals" = "\u00B7",
-        " " = " "
-      )
-    ) +
-    coord_fixed() +
-    labs(
-      x     = "White decision threshold (percentile)",
-      y     = "Minority decision threshold (percentile)",
-      fill  = "Robust outcome\ntest indicates\u2026",
-      shape = "Ground truth is\u2026"
-    ) +
-    guides(
-      alpha = "none",
-      color = "none",
-      fill = guide_legend(
-        order = 1,
-        nrow = 1,
-        byrow = TRUE,
-        override.aes = list(alpha = 1)
-      ),
-      shape = guide_legend(
-        order = 2,
-        nrow = 1,
-        byrow = TRUE,
-        override.aes = list(size = 6)
-      )
-    ) +
-    facet_grid(rows = vars(race), cols = vars(dataset)) +
-    theme(
-      legend.position = "bottom",
-      legend.box = "vertical",
-      strip.text = element_text(size = 6),
-      panel.spacing = unit(1.5, "lines"),
-      panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank()
-    )
-
-  ggsave(
-    path("plots", str_c(policy, "-simulation-robust.pdf")),
-    p_hybrid_simulation,
-    width  = 6.5,
-    height = 4.5
-  )
-
-  # Prepare the outcome simulation data
-  outcome_sim_data <- simulation %>%
-    filter(policy == {{ policy }}) %>%
-    mutate(
-      outcome_result = fct_recode(
-        outcome_result,
-        `Discrimination against\nminority group`    = "Discriminatory",
-        `Discrimination against\nWhite individuals` = "Favorable"
-      ),
-      alpha  = abs(Delta_outcome_rate),
-      alpha  = if_else(outcome_result == "Infeasible", 1, alpha),
-      race          = fct_recode(race, "Black" = "b", "Hispanic" = "h"),
-      shape         = case_when(
-        t_0 > t_1 & str_detect(dataset, "Recid|Contra") ~
-          "Discrimination against\nminority group",
-        t_0 > t_1 & str_detect(dataset, "Lend|Bar") ~
-          "Discrimination against\nWhite individuals",
-        t_0 < t_1 & str_detect(dataset, "Recid|Contra") ~
-          "Discrimination against\nWhite individuals",
-        t_0 < t_1 & str_detect(dataset, "Lend|Bar") ~
-          "Discrimination against\nminority group",
-        TRUE ~ " "
-      )
-    )
-
-  p_outcome_simulation <- outcome_sim_data %>%
-    ggplot() +
-    geom_rect(
-      aes(
-        xmin = t_0,
-        xmax = t_0+ 1 / n_tiles,
-        ymin = t_1,
-        ymax = t_1 + 1 / n_tiles,
-        fill = outcome_result
-      ),
-      color = "transparent",
-      alpha = 0.5
-    ) +
-    geom_point(
-      aes(x = t_0, y = t_1, shape = shape, color = outcome_result),
-      size = 2,
-      alpha = 1,
-      # Only print at 10% intervals
-      data = filter(
-        outcome_sim_data,
-        abs(((10 * t_0) %% 1) - 0.5) < 1e-6,
-        abs(((10 * t_1) %% 1) - 0.5) < 1e-6
-      )
-    ) + 
-    geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
-    scale_x_continuous(
-      labels = scales::percent,
-      limits = c(0, 1),
-      expand = c(0, 0)
-    ) +
-    scale_y_continuous(
-      labels = scales::percent,
-      limits = c(0, 1),
-      expand = c(0, 0)
-    ) +
-    scale_fill_manual(
-      values = c(
-        "Discrimination against\nminority group" = "red",
-        "Discrimination against\nWhite individuals" = "blue",
-        "Infeasible" = "grey"
-      )
-    ) +
-    scale_color_manual(
-      values = c(
-        "Discrimination against\nminority group" = "red",
-        "Discrimination against\nWhite individuals" = "blue",
-        "Inconclusive" = "#8B8000",
-        "Infeasible" = "grey"
-      )
-    ) +
-    scale_shape_manual(
-      values = c(
-        "Discrimination against\nminority group" = "\u00D7",
-        "Discrimination against\nWhite individuals" = "\u00B7",
-        " " = " "
-      )
-    ) +
-    coord_fixed() +
-    labs(
-      x     = "White threshold (percentile)",
-      y     = "Minority threshold (percentile)",
-      fill  = "Standard outcome\ntest indicates\u2026",
-      shape = "Ground truth is\u2026"
-    ) +
-    guides(
-      alpha = "none",
-      color = "none",
-      fill = guide_legend(
-        order = 1,
-        nrow = 1,
-        byrow = TRUE,
-        override.aes = list(alpha = 1)
-      ),
-      shape = guide_legend(
-        order = 2,
-        nrow = 1,
-        byrow = TRUE,
-        override.aes = list(size = 6)
-      )
-    ) +
-    facet_grid(rows = vars(race), cols = vars(dataset)) +
-    theme(
-      legend.position = "bottom",
-      legend.box = "vertical",
-      strip.text = element_text(size = 6),
-      panel.spacing = unit(1.5, "lines"),
-      panel.grid.major = element_blank(),
-      panel.grid.minor = element_blank()
-    )
-
-  ggsave(
-    path("plots", str_c(policy, "-simulation-standard.pdf")),
-    p_outcome_simulation,
-    width  = 6.5,
-    height = 4.5
-  )
+  }
 }
+
+################################################################################
+# Convenience function for simulating discrimination for fixed parameters
+disc_sim <- function(nu, mu_0, mu_1) {
+# Lay out a grid of parameters
+  expand_grid(t_0 = seq(1, n_tiles - 1) / n_tiles, t_1 = seq(1, n_tiles - 1) / n_tiles) %>%
+    mutate(
+      # Calculate decision and outcome rates
+      dr_0 = pbeta(t_0, mu_0 * nu, nu - mu_0 * nu, lower.tail = FALSE),
+      or_0 = mu_0 * pbeta(t_0, mu_0 * nu + 1, nu - mu_0 * nu, lower.tail = FALSE) / dr_0,
+      dr_1 = pbeta(t_1, mu_1 * nu, nu - mu_1 * nu, lower.tail = FALSE),
+      or_1 = mu_1 * pbeta(t_1, mu_1 * nu + 1, nu - mu_1 * nu, lower.tail = FALSE) / dr_1,
+      # Add robust outcome test results
+      result = case_when(
+        or_0 >  or_1 & dr_0 <  dr_1 | or_0 <  or_1 & dr_0 >  dr_1 ~ "conclusive",
+        or_0 >= or_1 & dr_0 >= dr_1 | or_0 <= or_1 & dr_0 <= dr_1 ~ "inconclusive",
+        TRUE ~ "infeasible"
+      ),
+      result = factor(result, levels = c("conclusive", "inconclusive", "infeasible"))
+    ) %>%
+    count(result, .drop = FALSE) %>%
+    mutate(p = n / sum(n)) %>%
+    select(-n) %>%
+    pivot_wider(names_from = result, values_from = p) %>%
+    select(-inconclusive)
+}
+
+p_baserates <- expand_grid( nu   = c(1, 2, 4, 8, 16, 32, 64),
+    mu_0 = seq(0.1, 0.9, by = 0.1),
+    mu_1 = seq(0.01, 0.99, by = 0.01)
+  ) %>%
+  rowwise() %>%
+  mutate(simulation = list(disc_sim(nu, mu_0, mu_1))) %>%
+  unnest(simulation) %>%
+  filter(infeasible < 0.01) %>%
+  mutate(nu = factor(nu, levels = c(1, 2, 4, 8, 16, 32, 64))) %>%
+  ggplot(aes(x = mu_1, y = conclusive, color = nu)) +
+  geom_line() +
+  geom_vline(
+    aes(xintercept = mu_0),
+    linetype = "dashed",
+    data     = tibble(mu_0 = seq(0.1, 0.9, by = 0.1))
+  ) +
+  scale_x_continuous(
+    labels = scales::percent,
+    limits = c(0, 1),
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(
+    labels = scales::percent,
+    limits = c(0, 1),
+    expand = c(0, 0)
+  ) +
+  scale_color_discrete() +
+  coord_fixed() +
+  labs(
+    x = expr(mu[1]),
+    y = expr("Proportion of conclusive tests"),
+    color = expression(nu)
+  ) +
+  facet_wrap(
+    vars(mu_0),
+    labeller = label_bquote(mu[0] == .(scales::percent(mu_0)))
+  ) +
+  theme(panel.spacing = unit(1.5, "lines"))
+
+ggsave(
+  path("plots", "simulation-baserates.pdf"),
+  plot   = p_baserates,
+  width  = 6.5,
+  height = 6.5
+)
 
 ################################################################################
 ######################### EXAMPLE SIMULATION POLICIES ##########################
@@ -869,7 +849,9 @@ hist <- c("lending", "compas", "sqf", "lsat") %>%
         "Bar passage\n(law school admissions)"
       )
     )
-  )
+  ) %>%
+  group_by(dataset) %>%
+  mutate(p = p / max(p), .groups = "drop")
 
 quant <- c("lending", "compas", "sqf", "lsat") %>%
   map(load_quant) %>%
@@ -887,19 +869,14 @@ quant <- c("lending", "compas", "sqf", "lsat") %>%
     )
   )
 
-max_density <- hist %>%
-  group_by(dataset) %>%
-  summarize(max_density = max(p), .groups = "drop")
-
 fun_data <- expand_grid(
     x        = seq(0, 1, length.out = 10000),
     quantile = factor(c("1/3", "1/2", "2/3"), levels = c("1/3", "1/2", "2/3")),
   ) %>%
   left_join(quant, by = "quantile", relationship = "many-to-many") %>%
-  left_join(max_density, by = "dataset") %>%
   rowwise() %>%
   filter(x >= X_LIMITS[[dataset]][[1]], x <= X_LIMITS[[dataset]][[2]]) %>%
-  mutate(y = pbeta(x, alpha, beta) * max_density)
+  mutate(y = pnorm(log(x / (1 - x)), log(t / (1 - t)), sigma))
 
 # Plot the example quasi-rational decision policies
 p_policy <- hist %>%
@@ -919,12 +896,14 @@ p_policy <- hist %>%
   scale_x_continuous(
     name = "Risk",
     labels = label_percent(),
+    breaks = trans_breaks(identity, identity, n = 5),
     expand = c(0, 0)
   ) +
   scale_y_continuous(
     name = NULL,
     labels = NULL,
-    expand = expansion(c(0, 0.05))
+    limits = c(0, 1.05),
+    expand = expansion(c(0, 0))
   ) +
   scale_color_discrete(
     name = "Quantile",
@@ -934,7 +913,7 @@ p_policy <- hist %>%
       "2/3" = expr(over(2, 3))
     )
   ) +
-  facet_wrap(vars(dataset), scales = "free") +
+  facet_wrap(vars(dataset), scales = "free_x") +
   theme(
     axis.ticks.y = element_blank(),
     legend.position = "bottom",
@@ -945,8 +924,8 @@ p_policy <- hist %>%
 ggsave(
   path("plots", "example-policies.pdf"),
   p_policy,
-  width  = 5,
-  height = 5
+  width  = 6,
+  height = 6
 )
 
 ################################################################################
@@ -979,20 +958,20 @@ x_scales <- list(
   # Lending
   scale_x_continuous(
     labels = label_percent(),
-    breaks = seq(0, 1, by = 1/3),
-    limits = c(0, 1),
+    breaks = seq(0.2, 1, by = 0.2),
+    limits = c(0.2, 1),
     expand = c(0, 0)
   ),
   scale_x_continuous(
     labels = label_percent(),
-    breaks = seq(0, 1, by = 1/3),
-    limits = c(0, 1),
+    breaks = seq(0.2, 1, by = 0.2),
+    limits = c(0.2, 1),
     expand = c(0, 0)
   ),
   scale_x_continuous(
     labels = label_percent(),
-    breaks = seq(0, 1, by = 1/3),
-    limits = c(0, 1),
+    breaks = seq(0.2, 1, by = 0.2),
+    limits = c(0.2, 1),
     expand = c(0, 0)
   ),
   # Compas
@@ -1017,20 +996,20 @@ x_scales <- list(
   # SQF
   scale_x_continuous(
     labels = label_percent(),
-    breaks = seq(0, 0.09, by = 0.03),
-    limits = c(0, 0.09),
+    breaks = seq(0, 0.1, by = 0.025),
+    limits = c(0, 0.1),
     expand = c(0, 0)
   ),
   scale_x_continuous(
     labels = label_percent(),
-    breaks = seq(0, 0.09, by = 0.03),
-    limits = c(0, 0.09),
+    breaks = seq(0, 0.1, by = 0.025),
+    limits = c(0, 0.1),
     expand = c(0, 0)
   ),
   scale_x_continuous(
     labels = label_percent(),
-    breaks = seq(0, 0.09, by = 0.03),
-    limits = c(0, 0.09),
+    breaks = seq(0, 0.1, by = 0.025),
+    limits = c(0, 0.1),
     expand = c(0, 0)
   ),
   # LSAT
@@ -1057,20 +1036,20 @@ y_scales <- list(
   # Lending
   scale_y_continuous(
     labels = label_percent(),
-    breaks = seq(0, 1, by = 1/3),
-    limits = c(0, 1),
+    breaks = seq(0.2, 1, by = 0.2),
+    limits = c(0.2, 1),
     expand = c(0, 0)
   ),
   scale_y_continuous(
     labels = label_percent(),
-    breaks = seq(0, 1, by = 1/3),
-    limits = c(0, 1),
+    breaks = seq(0.2, 1, by = 0.2),
+    limits = c(0.2, 1),
     expand = c(0, 0)
   ),
   scale_y_continuous(
     labels = label_percent(),
-    breaks = seq(0, 1, by = 1/3),
-    limits = c(0, 1),
+    breaks = seq(0.2, 1, by = 0.2),
+    limits = c(0.2, 1),
     expand = c(0, 0)
   ),
   # Compas
@@ -1095,20 +1074,20 @@ y_scales <- list(
   # SQF
   scale_y_continuous(
     labels = label_percent(),
-    breaks = seq(0, 0.09, by = 0.03),
-    limits = c(0, 0.09),
+    breaks = seq(0, 0.1, by = 0.025),
+    limits = c(0, 0.1),
     expand = c(0, 0)
   ),
   scale_y_continuous(
     labels = label_percent(),
-    breaks = seq(0, 0.09, by = 0.03),
-    limits = c(0, 0.09),
+    breaks = seq(0, 0.1, by = 0.025),
+    limits = c(0, 0.1),
     expand = c(0, 0)
   ),
   scale_y_continuous(
     labels = label_percent(),
-    breaks = seq(0, 0.09, by = 0.03),
-    limits = c(0, 0.09),
+    breaks = seq(0, 0.1, by = 0.025),
+    limits = c(0, 0.1),
     expand = c(0, 0)
   ),
   # LSAT
@@ -1153,7 +1132,7 @@ p_calibration <- calibration %>%
   ) +
   theme(
     legend.position = "bottom",
-    panel.spacing = unit(0.5, "lines"),
+    panel.spacing = unit(0.75, "lines"),
     strip.text = element_text(size = 6),
     aspect.ratio = 1
   )
@@ -1161,6 +1140,6 @@ p_calibration <- calibration %>%
 ggsave(
   path("plots", "calibration.pdf"),
   p_calibration,
-  width  = 6.5,
+  width  = 6,
   height = 7.5,
 )

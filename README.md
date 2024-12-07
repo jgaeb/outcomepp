@@ -1,7 +1,17 @@
 # A Simple, Statistically Robust Test of Discrimination.
 
-Data and replication materials for Gaebler and Goel (2024)
-["A Simple, Statistically Robust Test of Discrimination"](https://arxiv.org/abs/2407.06539).
+Data and replication materials for Gaebler and Goel (2025)
+["A Simple, Statistically Robust Test of
+Discrimination"](https://doi.org/10.1073/pnas.2416348122).
+
+## Citation
+
+J.D. Gaebler, & S. Goel,   A simple, statistically robust test of
+discrimination, _Proc. Natl. Acad. Sci. U.S.A._ 122 (10) e2416348122,
+[https://doi.org/10.1073/pnas.2416348122](https://doi.org/10.1073/pnas.2416348122)
+(2025).
+
+## Instructions
 
 To reproduce the analyses in our paper:
 

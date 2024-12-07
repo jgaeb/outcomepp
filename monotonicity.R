@@ -85,4 +85,5 @@ map(seq(n_bootstrap), bootstrap, df, n_buckets) %>%
     names_from = "statistic",
     values_from = "value"
   ) %>%
+  mutate(race = factor(race, levels = c("b", "h", "w"))) %>%
   write_rds(monotonicity_path)

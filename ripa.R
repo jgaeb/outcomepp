@@ -31,7 +31,7 @@ COL_TYPES <- c(
   "skip",     # S  # RAE_PACIFIC_ISLANDER
   "skip",     # T  # RAE_WHITE
   "skip",     # U  # RAE_MULTI_RACIAL
-  ## G: Gender    
+  ## G: Gender
   "text",     # V  # G_FULL
   "skip",     # W  # G_MALE
   "skip",     # X  # G_FEMALE
@@ -235,10 +235,6 @@ dir_ls(path = path("data", "ripa"), regexp = "RIPA.*\\.xlsx$") %>%
     Delta_decision_rate_h = decision_rate_h - decision_rate_w,
     Delta_outcome_rate_b  = outcome_rate_b - outcome_rate_w,
     Delta_outcome_rate_h  = outcome_rate_h - outcome_rate_w,
-    var_sr_b              = var_sr_b + var_sr_w,
-    var_sr_h              = var_sr_h + var_sr_w,
-    var_hr_b              = var_hr_b + var_hr_w,
-    var_hr_h              = var_hr_h + var_hr_w,
     n_b                   = n_b,
     n_h                   = n_h,
     n_w                   = n_w,
@@ -263,9 +259,7 @@ dir_ls(path = path("data", "ripa"), regexp = "RIPA.*\\.xlsx$") %>%
     race,
     n_race,
     Delta_decision_rate,
-    Delta_outcome_rate,
-    var_sr,
-    var_hr
+    Delta_outcome_rate
   ) %>%
   arrange(n_agency, agency, race) %>%
   mutate(race = factor(race, levels = c("b", "h", "w"))) %>%

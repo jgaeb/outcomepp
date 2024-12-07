@@ -2,15 +2,23 @@
 # Usage: bash download.sh
 # Options: --clean: Additionally download the compas, lsat, ripa, and sqf
 #          "clean" datasets. (The clean lending data are always downloaded.)
+#          --clean-arxiv: Download the version of the clean datasets that were used in
+#          the arxiv paper. (NOTE: To recreate the results in that version, you
+#          must revert to the commit tagged "arxiv".) This supercedes the
+#          --clean option.
 
-USAGE="Usage: bash download.sh [--clean]"
+USAGE="Usage: bash download.sh [--clean] [--clean-arxiv]"
 
 S3_BUCKET_URL=https://outcomepp.s3.us-east-2.amazonaws.com/
 
 # Parse command line arguments
 CLEAN=false
+CLEAN_ARXIV=false
 while [ $# -gt 0 ]; do
   case "$1" in
+    --clean-arxiv)
+      CLEAN_ARXIV=true
+      ;;
     --clean)
       CLEAN=true
       ;;
@@ -24,8 +32,10 @@ while [ $# -gt 0 ]; do
 done
 
 # Choose which datasets to download
-DATASETS="clean-lending compas lsat ripa sqf"
-if [ "$CLEAN" = true ]; then
+DATASETS="lending compas lsat ripa sqf"
+if [ "$CLEAN_ARXIV" = true ]; then
+  DATASETS="clean-compas-arxiv clean-lsat-arxiv clean-ripa-arxiv clean-sqf-arxiv $DATASETS"
+elif [ "$CLEAN" = true ]; then
   DATASETS="clean-compas clean-lsat clean-ripa clean-sqf $DATASETS"
 fi
 

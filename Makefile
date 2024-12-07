@@ -7,7 +7,7 @@ N_BOOTSTRAP ?= 1000
 # Set the number of tiles in the appendix plots
 N_TILES ?= 100
 # Set the larger alpha level
-ALPHA0 ?= 0.6
+ALPHA0 ?= 0.32
 # Set the smaller alpha level
 ALPHA1 ?= 0.05
 
@@ -130,6 +130,7 @@ data/clean/compas%.rds: data/compas/compas.db \
 												setup.R \
 												monotonicity.R \
 												simulation.R \
+												wtd_quantiles.cpp \
 												model_checks.R
 	@echo "Processing COMPAS data"
 	@date
@@ -153,6 +154,7 @@ data/clean/lsat%.rds: data/lsat/lsac.csv \
 											setup.R \
 											monotonicity.R \
 											simulation.R \
+											wtd_quantiles.cpp \
 											model_checks.R
 	@echo "Processing LSAT data"
 	@date
@@ -180,7 +182,9 @@ data/sqf/%.csv:
 data/clean/sqf%.rds: $(SQF-DATA) sqf.R \
 																 setup.R \
 																 monotonicity.R \
-																 simulation.R
+																 simulation.R \
+																 wtd_quantiles.cpp \
+																 model_checks.R
 	@echo "Processing SQF data"
 	@date
 	time Rscript sqf.R \
@@ -193,14 +197,14 @@ data/clean/sqf%.rds: $(SQF-DATA) sqf.R \
 ################################################################################
 # Plots
 
-PLOTS = plots/main-inframarginality.pdf \
-				plots/appendix-inframarginality.pdf \
+PLOTS = plots/inframarginality-main.pdf \
+				plots/inframarginality-appendix.pdf \
 				plots/ripa.pdf \
 				plots/monotonicity.pdf \
-				plots/threshold-simulation-robust.pdf \
-				plots/threshold-simulation-standard.pdf \
-				plots/beta-simulation-robust.pdf \
-				plots/beta-simulation-standard.pdf \
+				plots/simulation-logit-normal-black.pdf \
+				plots/simulation-logit-normal-hispanic.pdf \
+				plots/simulation-threshold-black.pdf \
+				plots/simulation-threshold-hispanic.pdf \
 				plots/calibration.pdf
 
 plots/%.pdf: data/clean/ripa.rds \

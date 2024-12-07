@@ -5,15 +5,32 @@
 #       - df: The original data. The data should have the following columns:
 #           - risk: The risk score
 #           - race: The race of the individuals involved
-#       - n_tiles: The number of tiles to use for the hybrid test
+#       - n_tiles: The number of tiles to use for the robust outcome test
 
-groundhog.library("glue", "2024-07-04")
+groundhog.library("
+  brio
+  decor
+  cpp11
+  glue
+", "2024-07-04")
+cpp_source("wtd_quantiles.cpp")
 
 ################################################################################
 # Define the paths for saving results.
 simulation_path <- path("data", "clean", str_c(DATASET, "-sim.rds"))
 histogram_path  <- path("data", "clean", str_c(DATASET, "-hist.rds"))
 quantiles_path  <- path("data", "clean", str_c(DATASET, "-quant.rds"))
+
+################################################################################
+# Calculate the quantiles for the threshold policy.
+thresholds <- df %>%
+  group_by(race) %>%
+  mutate(w = 1 / n()) %>%
+  ungroup() %>%
+  reframe(
+    p = seq(1, n_tiles - 1) / n_tiles,
+    q = wtd_quantile(risk, w, p)
+  )
 
 ################################################################################
 # Convenience function for testing the hybrid test on a threshold policy.
@@ -28,30 +45,19 @@ test_t_policy <- function(t) {
     )
 }
 
-# Lay out a grid of thresholds at each of the buckets, and then compute
-# what the hybrid test would say about the policy.
-t_policy <- tibble(t = seq(1, n_tiles - 1) / n_tiles) %>%
+# Compute the decision and outcome rates for the threshold policy.
+t_policy <- thresholds %>%
   rowwise() %>%
-  mutate(sim = list(test_t_policy(quantile(df$risk, t)))) %>%
+  mutate(sim = list(test_t_policy(q))) %>%
   unnest(sim) %>%
-  select(race, t, decision_rate, outcome_rate) %>%
-  mutate(policy = factor("threshold", levels = c("threshold", "beta")))
+  select(race, t = p, decision_rate, outcome_rate) %>%
+  mutate(policy = factor("threshold", levels = c("threshold", "logit-normal")))
 
 ################################################################################
-# Convenience function for calculating beta parameters from a mean and variance.
-beta_params <- function(mean, var) {
-  alpha <- mean * (mean * (1 - mean) / var - 1)
-  beta <- alpha * (1 - mean) / mean
-  tibble(alpha = alpha, beta = beta)
-}
-# Convenience function for testing the hybrid test on a beta policy.
-test_beta_policy <- function(t, sigma) {
-  # Compute the alpha and beta parameters for the beta distribution.
-  alpha <- beta_params(t, sigma)$alpha
-  beta  <- beta_params(t, sigma)$beta
-
+# Convenience function for testing the hybrid test on a logit-normal policy.
+test_ln_policy <- function(t, sigma) {
   # If the parameters are invalid, return NaN.
-  if (alpha <= 0 || beta <= 0) {
+  if (!is.finite(t) || sigma <= 0) {
     return(tibble(
       race = unique(df$race),
       decision_rate = NaN,
@@ -61,7 +67,7 @@ test_beta_policy <- function(t, sigma) {
 
   # Compute the decision and outcome rates.
   df %>%
-    mutate(d_g = pbeta(risk, alpha, beta)) %>%
+    mutate(d_g = pnorm(log(risk / (1 - risk)), log(t / (1 - t)), sigma)) %>%
     group_by(race) %>%
     summarize(
       decision_rate = mean(d_g),
@@ -72,19 +78,21 @@ test_beta_policy <- function(t, sigma) {
 
 # Lay out a grid of thresholds at each of the buckets, and then compute
 # what the hybrid test would say about the policy.
-sigma <- with(df, var(risk) / 4)
-print(glue("Standard deviation for the beta policy: {sqrt(sigma)}"))
+sigma <- with(df, sd(log(risk / (1 - risk))) / 2)
+print(glue("Scale parameter for the logit normal policy: {sigma}"))
 
-beta_policy <- tibble(t = seq(1, n_tiles - 1) / n_tiles) %>%
+ln_policy <- thresholds %>%
   rowwise() %>%
-  mutate(sim = list(test_beta_policy(quantile(df$risk, t), sigma))) %>%
+  mutate(sim = list(test_ln_policy(q, sigma))) %>%
   unnest(sim) %>%
-  select(race, t, decision_rate, outcome_rate) %>%
-  mutate(policy = factor("beta", levels = c("threshold", "beta")))
+  select(race, t = p, decision_rate, outcome_rate) %>%
+  mutate(
+    policy = factor("logit-normal", levels = c("threshold", "logit-normal"))
+  )
 
 ################################################################################
 # Save the results.
-rbind(t_policy, beta_policy) %>%
+rbind(t_policy, ln_policy) %>%
   write_rds(simulation_path)
 
 ################################################################################
@@ -100,14 +108,12 @@ df %>%
   write_rds(histogram_path)
 
 ################################################################################
-# Store the quantiles and the standard deviation for the beta policy.
+# Store the quantiles and the standard deviation for the logit-normal policy.
 tibble(
     quantile = c(1/3, 1/2, 2/3),
-    t        = quantile(df$risk, quantile)
+    t        = quantile(df$risk, quantile),
+    sigma    = sigma
   ) %>%
-  rowwise() %>%
-  mutate(params = list(beta_params(t, sigma))) %>%
-  unnest(params) %>%
   mutate(quantile = factor(
     quantile,
     levels = c(1/3, 1/2, 2/3),

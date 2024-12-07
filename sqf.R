@@ -432,7 +432,7 @@ read_sqf <- function(filepath) {
       detailcm,
       # (Time and time of year)
       hour,
-      month, 
+      month,
       # (Location)
       inout,
       trhsloc,
